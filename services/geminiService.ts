@@ -68537,13 +68537,31 @@ const generateMockCopilotResponse = (question: string): string => {
 }
 
 
-export const getAnomalyDetails = async (anomaly: Anomaly, context: CostData[], provider: CloudProvider): Promise<{ anomalyDetails: string, recommendations: Recommendation[] }> => {
+export const getAnomalyDetails = async (anomaly: Anomaly, context: CostData[], provider: CloudProvider, startDate: string, endDate: string): Promise<{ anomalyDetails: string, recommendations: Recommendation[] }> => {
     if (provider === 'mock') {
         await new Promise(resolve => setTimeout(resolve, 800)); // Simulate AI thinking
         return Promise.resolve(generateMockAnomalyDetails());
     }
     try {
-        return await apiRequest('/api/anomaly-details', { anomaly, context });
+        // Use local Python API for non-mock providers
+        const response = await fetch('https://cloud-cost-explorer.onrender.com/analysis?startDate=' + startDate + '&endDate=' + endDate, {
+            method: 'GET',
+            headers: { 
+                'Content-Type': 'application/json',
+                'Origin': 'https://cloud-cost-explorer.onrender.com/chat'
+            },
+        });
+
+        if (!response.ok) {
+            throw new Error(`Local Python API returned ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        return {
+            anomalyDetails: data.anomalyDetails || "Anomaly detected in cost data",
+            recommendations: data.recommendations || []
+        };
     } catch (error) {
         console.error("Error getting anomaly details:", error);
         throw new Error("Failed to generate details for the anomaly.");
@@ -68556,8 +68574,8 @@ export const askCopilot = async (question: string, history: { role: string, part
          return Promise.resolve(generateMockCopilotResponse(question));
     }
     try {
-        const response = await apiRequest('/api/copilot', { question, history, context });
-        return response.text;
+        const response = await apiRequest('https://cloud-cost-explorer.onrender.com/chat', { question });
+        return response.text || response.response || response.message || response.answer || 'No response received';
     } catch (error) {
         console.error("Error asking copilot:", error);
         throw new Error("The FinOps Copilot is currently unavailable. Please try again later.");
